@@ -76,3 +76,42 @@
   - 이 loss는 상관관계가 떨어지는 RGB 색상을 상관관계가 떨어지는 색 공간으로 변환할 때 도움이 된다. 
   - 색상을 바꾸는 것이 content 보존과 대치되므로 가중치를 ${{1 \over \alpha}}$로 주었다.
 
+### 2.3 Content Loss
+
+- content loss는 local self-similarity descriptors로부터 구할 수 있는 강건한 패턴 인지를 이용했다. 
+  - 위 원리에 대해서, 얼굴 형태와 약간 비슷하게 생긴 물체들을 보고 얼굴을 떠올리는 현상인 'pareidolia'를 일상 생활에서 만날 수 있다. 
+  - $D^X$를 $X^{{(t)}}$의 성분 벡터(hypercolumn) 간의 cosine distance 행렬이라고 할 때, 그리고 $D^{{I_C}}$를 $I_C$로부터 같은 방법으로 구한 행렬일 때, content loss는 다음과 같다:
+  $$
+  \mathcal{L}_{content}(X, C) = {{1 \over n^2}} \sum_{i, j} 
+  \left\vert {{ D_{ij}^X \over \sum_i D_{ij}^X }} - 
+             {{ D_{ij}^{{I_C}} \over \sum_i D_{ij}^{{I_C}} }} \right\vert \qquad (11) \qquad
+  $$
+  - 임의의 데이터 쌍에서 얻은 성분 벡터들의 정규화된 cosine distance는 content 이미지와 결과 이미지 간의 차이의 상수배여야 한다는 것을 강제한다. 따라서 content 이미지의 픽셀에 직접 loss를 주지 않고도 결과 이미지의 구조를 제한할 수 있다. 
+  - 결국 이미지 $X_{{(t)}}$의 실제 픽셀값은 $I_C$와 크게 달라짐에도 구조와 의미가 넓은 범위에서 보존된다. 
+
+### 2.4 User Control
+
+- 사용자가 결과 이미지의 style 강도를 조절할 수 있게 했다. 즉 사용자가 $X_{{(t)}}$와 $I_S$의 구역들 간에 낮은 style loss를 가지도록 할 수 있다. 점을 찍어 하나의 구역만 사용할 수도 있다. 
+  - 결과 이미지와 style 이미지의 구역 쌍의 집합을 $(X_{t1}, S_{s1})...(X_{tK}, S_{sK})$라 할 때, 우리는 Relaxed EMD의 ground metric을 다음과 같이 바꿨다:
+  $$
+  Cij = 
+  \begin{cases}
+  \beta * D_{cos}(A_i, B_j), \text{if } i \in X_{tk}, j \in S_{sk} \\
+  \infty, \text{if } \exist k \ \text{ s.t. } i \in X_{tk}, j \notin S_{sk} \qquad \qquad (12) \\
+  D_{cos}(A_i, B_j) \ \text{ otherwise,}
+  \end{cases}
+  $$
+
+  - $\beta$는 사용자가 지정한 제약의 가중치가 되며, 연구에서는 모든 실험에서 $\beta = 5$를 사용했다. 
+  - 또, point-to-point 조건을 쓸 때, 그 조건 주위로 9x9 그리드에서 균일하게 자동 생성한 8개의 조건들을 추가해 주는 것이 유용하다. 이때, 그리드 내의 각 점의 수평, 수직 거리는 512x512 결과 이미지에서 20 픽셀이지만, 이 값은 사용자 인터페이스에 통합되어 조절될 수 있는 변수이다. 
+
+### 2.5 Implementation Details
+
+- 우리는 이 방법을 매 회 해상도를 높이고 $\alpha$를 절반으로 줄이면서 반복 적용했다. 
+  - 먼저 style과 content 이미지를 긴 변이 64 픽셀이 되도록 조절하고, 결과 이미지는 각 크기 별로 bilinearly upsampled되며, 다음 단계의 초기값으로 사용된다. 
+  - 기본값으로 4개의 해상도에 대해 style을 입혔고, 매 회 $\alpha$가 반으로 줄기 때문에 초기값을 $\alpha=16.0$으로 두고 $\alpha=1.0$이 될 때까지 반복했다. 
+  - 가장 저해상도에서는 content 이미지(high frequency gradients)로 만든 Laplacian pyramid의 맨 아랫 단계에 style 이미지의 평균값을 더한 것으로 초기화했다. 이후 초기화된 이미지를 5단계의 Laplacian pyramid로 분리하고, RMSprop로 각 층의 목적 함숫값을 낮추도록 했다. 
+- Laplacian pyramid를 사용해 최적화하는 것이 단순히 픽셀을 사용하는 것보다 수렴이 매우 빨랐다. 
+  - 각 크기 별로 RMSprop으로 200번 업데이트했으며, 마지막 크기에서 0.001을 쓴 것 외에 모든 크기에서 0.002의 learning rate를 썼다. 
+- pairwise distance를 계산하는 것은 입력 이미지들의 모든 좌표에 대해 feature를 뽑는 것을 포함해 style loss와 content loss를 계산해야 하기 때문에, 대신 우리는 1024개의 좌표를 style 이미지에서 임의로, 1024개의 좌표를 content 이미지의 균일한 그리드에서 랜덤 offset을 준 뒤 추출했다. 
+  - 우리는 뽑은 좌표들에 대해서만 loss를 미분했고, 매 step 별로 새로운 좌표를 추출했다. 
