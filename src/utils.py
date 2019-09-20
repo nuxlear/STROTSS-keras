@@ -11,12 +11,15 @@ def load_image(image, max_side=1000, force_scale=False, normalize=True):
     assert isinstance(x, np.ndarray)
     
     if normalize:
-        x = normalize_image(x, -1, 1)
+        x = normalize_image(x, -0.5, 0.5)
 
     if len(x.shape) < 3:
         x = np.stack([x, x, x], 2)
     if x.shape[2] > 3:
         x = x[..., :3]
+
+    if len(x.shape) == 3:
+        x = x[np.newaxis, :]
 
     w, h = x.shape[-3:-1]
     if 0 < max_side < max(w, h) or force_scale:
@@ -32,9 +35,29 @@ def normalize_image(image, low=0, high=1):
     return (image / 255.) * d + low
 
 
+def resize(imgs, size=None, ratio=None):
+    if len(imgs.shape) != 4:
+        raise AssertionError('the image for resize must be 4, received {}'.format(imgs.ndim))
+
+    if size is None and ratio is None:
+        raise ValueError('Both of size and ratio must not be None. ')
+
+    if ratio is not None:
+        h, w = int(imgs.shape[1] * ratio), int(imgs.shape[2] * ratio)
+    if size is not None:
+        h, w = size
+
+    resized = []
+    for img in imgs:
+        img = cv2.resize(img, (w, h), interpolation=cv2.INTER_LINEAR)
+        resized.append(img)
+
+    return np.array(resized)
+
+
 def scale_max(x, max_side=1000.):
     w, h = x.shape[-3:-1]
     factor = max_side / max(w, h)
-    cv2.resize(x, (int(factor * w), int(factor * h)), interpolation='bilinear')
+    x = resize(x, ratio=factor)
 
     return x
