@@ -1,9 +1,13 @@
+from keras.optimizers import RMSprop
+
 import imageio
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 
-from utils import *
+from src.utils import *
+from src.model import *
+from src.loss import *
 
 
 def laplacian_pyramid(imgs, steps: int=1):
@@ -23,6 +27,23 @@ def laplacian_pyramid(imgs, steps: int=1):
         results.append(n)
         
     return np.array(results)
+
+
+def style_transfer(style_img, content_img, lr=1e-3 ,content_weight=1.):
+
+    cnn = vgg16_pt()
+
+    phi = lambda x: cnn.predict(x)
+    # phi2 = lambda x, y, z: 
+
+    optimizer = RMSprop(lr=lr)
+    loss = REMD_loss
+
+    z_c = phi(content_img)
+
+    z_s_all = []
+
+    # requires style transfer model, wrapper of VGG16_pt model
 
 
 def run(style_img, content_img, content_weight=16, max_scale=5):
