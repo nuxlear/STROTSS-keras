@@ -1,0 +1,5 @@
+# temporary directories & files
+.history/
+.idea/
+.vscode/
+.DS_STORE
