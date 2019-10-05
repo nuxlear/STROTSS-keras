@@ -1,6 +1,6 @@
 # Style Transfer by Relaxed Optimal Transport and Self-Similarity
 
-#### Nicholas Kolkin, Jason Salavon, Greg Shakhnarovich, CVPR 2019  [[arXiv]](https://arxiv.org/abs/1904.12785) [[PDF]](https://arxiv.org/pdf/1904.12785.pdf)
+#### Nicholas Kolkin, Jason Salavon, Greg Shakhnarovich, CVPR 2019  [[arXiv]](https://arxiv.org/abs/1904.12785) [[PDF]](https://arxiv.org/pdf/1904.12785.pdf) [[GitHub]](https://github.com/nkolkin13/STROTSS)
 
 
 ## Keywords
@@ -16,7 +16,7 @@
 
 ## Proposed Method
 
-### summary
+### Summary
 
 전체적인 process는 다음과 같다. 
 - output 이미지를 content 이미지의 laplacian pyramid 맨 아래 층에 style 이미지의 평균값을 더하는 걸로 초기화한다. 
@@ -52,8 +52,66 @@ $$
 $$
 
 Self-similarity를 계산하는 수식은 다음과 같다. 
+- $X$의 hypercolumn 간 cosine distance matrix $D^X$
 $$
-\mathcal{L}_{content}(X, C) = {{1 \over n^2}} \sum_{i, j} 
+\mathcal{L}_{content}(X, I_C) = {{1 \over n^2}} \sum_{i, j} 
 \left\vert {{ D_{ij}^X \over \sum_i D_{ij}^X }} - 
             {{ D_{ij}^{{I_C}} \over \sum_i D_{ij}^{{I_C}} }} \right\vert
 $$
+
+### User Control
+
+Relaxed EMD의 기본 수식 형태를 다음과 같이 바꾼다. 
+- output 이미지와 style 이미지의 구역 쌍의 집합 $(X_{t1}, S_{s1})...(X_{tK}, S_{sK})$
+$$
+Cij = 
+\begin{cases}
+\beta * D_{cos}(A_i, B_j), \text{if } i \in X_{tk}, j \in S_{sk} \\
+\infty, \text{if } \exist k \ \text{ s.t. } i \in X_{tk}, j \notin S_{sk} \\
+D_{cos}(A_i, B_j) \ \text{ otherwise,}
+\end{cases}
+$$
+
+## Results
+
+- 여러 이미지 간 style transfer 결과
+
+![style_transfer_result](images/style_transfer_result.png)
+
+<br>
+
+- 다른 style transfer 간의 결과 비교
+
+![method_comparison](images/method_comparison.png)
+
+<br>
+
+- user control 유무의 결과 비교
+
+![user_control](images/user_control.png)
+
+<br>
+
+- $\alpha$ 값의 변화에 따른 결과 비교
+
+![stylizing_control](images/stylizing_control.png)
+
+<br>
+
+- Amazon Mechanical Turk (AMT)를 통한 정성적 평가의 비교
+
+![quantitative_evaluation](images/quantitative_evaluation.png)
+
+<br>
+
+- 각 요소 별 ablation test
+
+![ablation_test](images/ablation_test.png)
+
+## Related Works
+- Image Analogy
+- Neural Image Style Transfer
+- Deep Feature Reshuffle
+- Markov Random Fields & CNN
+- Contextual Loss for Image Transformation
+- Inpainting

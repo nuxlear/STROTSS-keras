@@ -82,7 +82,7 @@
   - 위 원리에 대해서, 얼굴 형태와 약간 비슷하게 생긴 물체들을 보고 얼굴을 떠올리는 현상인 'pareidolia'를 일상 생활에서 만날 수 있다. 
   - $D^X$를 $X^{{(t)}}$의 성분 벡터(hypercolumn) 간의 cosine distance 행렬이라고 할 때, 그리고 $D^{{I_C}}$를 $I_C$로부터 같은 방법으로 구한 행렬일 때, content loss는 다음과 같다:
   $$
-  \mathcal{L}_{content}(X, C) = {{1 \over n^2}} \sum_{i, j} 
+  \mathcal{L}_{content}(X, I_C) = {{1 \over n^2}} \sum_{i, j} 
   \left\vert {{ D_{ij}^X \over \sum_i D_{ij}^X }} - 
              {{ D_{ij}^{{I_C}} \over \sum_i D_{ij}^{{I_C}} }} \right\vert \qquad (11) \qquad
   $$
