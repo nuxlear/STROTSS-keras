@@ -1,3 +1,6 @@
+import sys
+sys.path.append('.')
+
 from keras.optimizers import RMSprop
 
 import imageio
@@ -29,7 +32,11 @@ def laplacian_pyramid(imgs, steps: int=1):
     return np.array(results)
 
 
-def style_transfer(style_img, content_img, lr=1e-3 ,content_weight=1.):
+def style_transfer(style_img, content_img, lr=1e-3, content_weight=1.):
+
+    ## Definitions
+
+    MAX_ITER = 250
 
     cnn = vgg16_pt()
 
@@ -44,6 +51,14 @@ def style_transfer(style_img, content_img, lr=1e-3 ,content_weight=1.):
     z_s_all = []
 
     # requires style transfer model, wrapper of VGG16_pt model
+
+    ## Preparation
+
+
+    ## Training
+
+    for i in range(MAX_ITER):
+        pass
 
 
 def run(style_img, content_img, content_weight=16, max_scale=5):
