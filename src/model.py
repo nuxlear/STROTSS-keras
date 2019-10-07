@@ -4,9 +4,11 @@ sys.path.append('.')
 from keras.layers import *
 from keras.models import Model
 from keras.applications import VGG16
+import keras.backend as K
 import tensorflow as tf
 
 import numpy as np
+import matplotlib.pyplot as plt
 
 from src.utils import *
 
@@ -118,10 +120,10 @@ class VGG16_pt(Model):
     def build(self, input_shape):
         x = Input(shape=input_shape[1:])
 
-        outputs = []
+        outputs = [x]
         for l in self.extracted_layers:
             out = x
-            for i in range(l):
+            for i in range(l+1):
                 out = self.vgg.layers[i](out)
             outputs.append(out)
         
@@ -146,11 +148,41 @@ class VGG16_pt(Model):
         xy = np.expand_dims(xy.flatten(), 1)
         xc = np.concatenate([xx, xy], axis=1)
 
-        pass
+        n_samples = min(self.n_samples, len(xc))
+
+        xx = xc[:n_samples, 0]
+        yy = xc[:n_samples, 0]
+
+        ## Need to understand of PyTorch tensor shaping ##
+
+        ls = []
+        for i, out in enumerate(outputs):
+            x = out
+
+            if i > 0 and out.shape[1] < outputs[i-1].shape[1]:
+                xx = xx / 2.
+                yy = yy / 2.
+
+            xx = np.clip(xx, 0, out.shape[1]-1).astype('int32')
+            yy = np.clip(yy, 0, out.shape[2]-1).astype('int32')
+
+            xs = [x[:, xx[i], yy[i]][:, tf.newaxis, tf.newaxis] for i in range(n_samples)]
+            x = K.concatenate(xs, axis=1)
+
+            ls.append(x)    # NOTICE: the original code do clone() and detach()
+        
+        out = K.concatenate(ls, axis=-1)    # NOTICE: the original code do contiguous()
+        return out
 
     def compute_output_shape(self, input_shape):
-        return [model.output_shape for model in self.models]
-
+        b = input_shape[0:1]
+        if self.inference_type == 'normal':
+            return [b + model.output_shape[1:] for model in self.models]
+        if self.inference_type == 'cat':
+            ch = sum([model.output_shape[-1] for model in self.models])
+            n = min(input_shape[1] * input_shape[2], self.n_samples)
+            return (b, n, 1, ch)
+        
 
 class StyleTransfer(Model):
 
@@ -168,14 +200,17 @@ if __name__ == '__main__':
 
     # test vgg_pt
     x = Input(shape=img.shape[1:])
-    vgg = VGG16_pt(input_shape=img.shape[1:], inference_type='normal')
+    vgg = VGG16_pt(input_shape=img.shape[1:], inference_type='cat')
 
     model = Model(x, vgg(x), name='extractor')
     model.summary()
 
     pred = model.predict(img)
-    for p in pred:
-        print(p.shape)
+    if isinstance(pred, list):
+        for p in pred:
+            print(p.shape)
+    else:
+        print(pred.shape)
 
     # test lap_pyr
     lap = LaplacianPyramid(levels=5)
@@ -184,7 +219,9 @@ if __name__ == '__main__':
 
     hc = l_model.predict(img)
     for h in hc:
-        print(h.shape)
+        print(h.shape, h.min(), h.max())
+        plt.imshow(np.clip(h[0] + .5, 0., 1.))
+        plt.show()
 
     # test inv_l_p
     xs = []
@@ -195,4 +232,6 @@ if __name__ == '__main__':
     i_model.summary()
 
     res = i_model.predict(hc)
-    print(res.shape)
+    print(res.shape, res.min(), res.max())
+    plt.imshow(np.clip(res[0] + .5, 0., 1.))
+    plt.show()
