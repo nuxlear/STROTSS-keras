@@ -11,6 +11,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from src.utils import *
+from src.loss import *
 
 
 # def vgg16_pt(input_shape):
@@ -50,7 +51,7 @@ from src.utils import *
 #     pass
 
 
-class LaplacianPyramid(Model):
+class LaplacianPyramid(Layer):
 
     def __init__(self, levels=1, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -82,7 +83,7 @@ class LaplacianPyramid(Model):
         return shapes
 
 
-class InverseLaplacianPyramid(Model):
+class InverseLaplacianPyramid(Layer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -100,7 +101,7 @@ class InverseLaplacianPyramid(Model):
         return input_shape[0]
 
 
-class VGG16_pt(Model):
+class VGG16_pt(Layer):
 
     def __init__(self, input_shape, inference_type=None, n_samples=100, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -182,15 +183,80 @@ class VGG16_pt(Model):
             ch = sum([model.output_shape[-1] for model in self.models])
             n = min(input_shape[1] * input_shape[2], self.n_samples)
             return (b, n, 1, ch)
-        
+
 
 class StyleTransfer(Model):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, input_shape, style_img, content_img, n_samples=1000, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
+        self.pyr = LaplacianPyramid(5)
+        self.vgg = VGG16_pt(input_shape, inference_type='normal', n_samples=n_samples)
+        self.z_s = preprocess_style_image(style_img)
+        self.z_c = preprocess_content_image(content_img)
+    
     def call(self, inputs):
-        pass
+        style, content = inputs
+        
+        style = self.pyr(style)
+        z_x = self.vgg(style)
+
+        loss = objective_function()
+        
+
+# class StyleTransfer(Model):
+    
+#     def __init__(self, image, n_samples, long_side, inner=1, *args, **kwargs):
+#         super().__init__(*args, **kwargs)
+#         self.image = K.variable(image)
+#         self.long_side = long_side
+#         self.n_samples = n_samples
+#         self.inner = inner
+        
+#         self.pyr = LaplacianPyramid(5)
+#         self.inv_pyr = InverseLaplacianPyramid()
+#         self.vgg = VGG16_pt(image.shape[-3:], inference_type='normal', n_samples=n_samples)
+#         self.vgg_cat = VGG16_pt(image.shape[-3:], inference_type='cat', n_samples=n_samples)
+        
+#     def call(self, inputs):
+#         style, content = inputs
+        
+#         s_pyr = self.pyr(self.image)
+        
+#         z_c = self.vgg(content)
+        
+#         z_img = scale_max(style, self.long_side, is_tensor=True)
+#         vgg_cat = VGG16_pt(z_img.shape[-3:], inference_type='cat', n_samples=n_samples)
+        
+#         zs = [vgg_cat(z_img) for _ in range(self.inner)]
+#         z = K.concatenate(zs, axis=2)
+        
+#         ## -> preprocessing logic.
+
+
+# class StyleTransfer(Layer):
+
+#     def __init__(self, scale, *args, **kwargs):
+#         super().__init__(*args, **kwargs)
+#         self.scale = scale
+        
+#     def build(self, input_shape):
+#         s_shape, c_shape = input_shape
+        
+#         self.lap = LaplacianPyramid(5)
+#         self.inv_lap = InverseLaplacianPyramid()
+#         self.vgg = VGG16_pt(c_shape, inference_type='normal')
+
+#     def call(self, inputs):
+        
+#         stylized, content = inputs
+        
+#         s_pyr = self.lap(stylized)
+        
+#         z_c = self.vgg(content)
+#         z_s, s_img = extract_style_from_image(stylized, 1000, scale, 5)
+        
+#         stylized = self.inv_lap()
+#         return stylized, content
 
 
 if __name__ == '__main__':

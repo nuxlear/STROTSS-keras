@@ -32,28 +32,20 @@ def laplacian_pyramid(imgs, steps: int=1):
     return np.array(results)
 
 
-def style_transfer(style_img, content_img, lr=1e-3, content_weight=1.):
+def style_transfer(style_img, content_img, long_side, lr=1e-3, content_weight=1.):
 
     ## Definitions
 
     MAX_ITER = 250
-
-    cnn = vgg16_pt()
-
-    phi = lambda x: cnn.predict(x)
-    # phi2 = lambda x, y, z: 
-
+    
     optimizer = RMSprop(lr=lr)
     loss = REMD_loss
 
-    z_c = phi(content_img)
-
-    z_s_all = []
-
-    # requires style transfer model, wrapper of VGG16_pt model
-
     ## Preparation
 
+    st_model = StyleTransfer(long_side)
+    
+    
 
     ## Training
 

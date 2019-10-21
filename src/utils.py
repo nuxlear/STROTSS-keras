@@ -1,6 +1,26 @@
 import imageio
 import cv2
 import numpy as np
+from keras.layers import *
+from keras.models import Model
+import tensorflow as tf
+
+
+def extract_style_from_image(img, n_samples, scale, inner):
+        
+    from src.model import VGG16_pt
+    
+    z_img = load_image(img, max_side=scale, force_scale=True)
+    x = Input(shape=z_img.shape[1:])
+    vgg = VGG16_pt(z_img.shape[1:], inference_type='cat', n_samples=n_samples)
+    extractor = Model(x, vgg(x), name='extractor_vgg_pt')
+    
+    zs = []
+    for i in range(inner):
+        zs.append(extractor.predict(z_img))
+    z = np.concatenate(zs, axis=2)
+    
+    return z, z_img
 
 
 def load_image(image, max_side=1000, force_scale=False, normalize=True):
@@ -35,7 +55,7 @@ def normalize_image(image, low=0, high=1):
     return (image / 255.) * d + low
 
 
-def resize(imgs, size=None, ratio=None):
+def resize(imgs, size=None, ratio=None, is_tensor=False):
     if len(imgs.shape) != 4:
         raise AssertionError('the image for resize must be 4, received {}'.format(imgs.ndim))
 
@@ -47,6 +67,9 @@ def resize(imgs, size=None, ratio=None):
     if size is not None:
         h, w = size
 
+    if is_tensor:
+        return tf.image.resize(imgs, (h, w))
+    
     resized = []
     for img in imgs:
         img = cv2.resize(img, (w, h), interpolation=cv2.INTER_LINEAR)
@@ -55,9 +78,18 @@ def resize(imgs, size=None, ratio=None):
     return np.array(resized)
 
 
-def scale_max(x, max_side=1000.):
+def scale_max(x, max_side=1000., is_tensor=False):
     w, h = x.shape[-3:-1]
     factor = max_side / max(w, h)
-    x = resize(x, ratio=factor)
+    x = resize(x, ratio=factor, is_tensor=is_tensor)
 
     return x
+
+
+if __name__ == '__main__':
+    img = load_image('images/butterfly.jpg')
+    long_side = 512
+    
+    z, z_img = extract_style_from_image(img, 1000, long_side, 5)
+    print('z: {}'.format(z.shape))
+    print('z_img: {}'.format(z_img.shape))
