@@ -10,45 +10,12 @@ import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
 
+import os
+import pickle
+
 from src.utils import *
 from src.loss import *
-
-
-# def vgg16_pt(input_shape):
-#     vgg = VGG16(weights='imagenet')
-#     extracted_layers = [1, 2, 4, 5, 7, 8, 9, 13, 17]
-
-#     x = Input(shape=input_shape)
-
-#     outputs = []
-#     for l in extracted_layers:
-#         out = x
-#         for i in range(l):
-#             out = vgg.layers[i](out)
-#         outputs.append(out)
-    
-#     # codes corresponding with `forward_cat`
-
-
-# def dec_lap_pyr(imgs, steps: int=1):
-#     if len(imgs.shape) != 4:
-#         raise AssertionError('the image for calculate Laplacian pyramid must be 4, received {}'.format(imgs.ndim))
-    
-#     results = []
-#     cur = imgs
-#     for i in range(steps):
-#         h, w = imgs.shape[-3:-1]
-#         small = tf.image.resize(imgs, (max(h//2, 1), max(w//2, 1)))
-#         back = tf.image.resize(small, (h, w))
-
-#         results.append(cur - back)
-#         cur = small
-    
-#     results.append(cur)
-#     return results
-
-# def syn_lap_pyr(pyr):
-#     pass
+from src.preprocess import *
 
 
 class LaplacianPyramid(Layer):
@@ -187,117 +154,93 @@ class VGG16_pt(Layer):
 
 class StyleTransfer(Model):
 
-    def __init__(self, input_shape, style_img, content_img, n_samples=1000, *args, **kwargs):
+    def __init__(self, base_img, style_img, content_img, scale, n_samples=1024, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.pyr = LaplacianPyramid(5)
-        self.vgg = VGG16_pt(input_shape, inference_type='normal', n_samples=n_samples)
-        self.z_s = preprocess_style_image(style_img)
-        self.z_c = preprocess_content_image(content_img)
-    
+        self.vgg = VGG16_pt(base_img.shape[-3:], inference_type='normal', n_samples=n_samples)
+        
+        self.x_img = K.variable(base_img)
+
+        if not os.path.isfile('tmp_z_s.pkl'):
+            self.z_s = preprocess_style_image(style_img, n_samples=n_samples, scale=scale, inner=1)
+            with open('tmp_z_s.pkl', 'wb') as f:
+                pickle.dump(self.z_s, f)
+        if not os.path.isfile('tmp_z_c.pkl'):
+            self.z_c = preprocess_content_image(content_img, n_samples=n_samples)
+            with open('tmp_z_c.pkl', 'wb') as f:
+                    pickle.dump(self.z_c, f)
+
+        with open('tmp_z_s.pkl', 'rb') as f:
+            self.z_s = pickle.load(f)
+        with open('tmp_z_c.pkl', 'rb') as f:
+            self.z_c = pickle.load(f)
+
     def call(self, inputs):
-        style, content = inputs
-        
-        style = self.pyr(style)
-        z_x = self.vgg(style)
+        z_x = self.vgg(self.x_img)
 
-        loss = objective_function()
-        
-
-# class StyleTransfer(Model):
-    
-#     def __init__(self, image, n_samples, long_side, inner=1, *args, **kwargs):
-#         super().__init__(*args, **kwargs)
-#         self.image = K.variable(image)
-#         self.long_side = long_side
-#         self.n_samples = n_samples
-#         self.inner = inner
-        
-#         self.pyr = LaplacianPyramid(5)
-#         self.inv_pyr = InverseLaplacianPyramid()
-#         self.vgg = VGG16_pt(image.shape[-3:], inference_type='normal', n_samples=n_samples)
-#         self.vgg_cat = VGG16_pt(image.shape[-3:], inference_type='cat', n_samples=n_samples)
-        
-#     def call(self, inputs):
-#         style, content = inputs
-        
-#         s_pyr = self.pyr(self.image)
-        
-#         z_c = self.vgg(content)
-        
-#         z_img = scale_max(style, self.long_side, is_tensor=True)
-#         vgg_cat = VGG16_pt(z_img.shape[-3:], inference_type='cat', n_samples=n_samples)
-        
-#         zs = [vgg_cat(z_img) for _ in range(self.inner)]
-#         z = K.concatenate(zs, axis=2)
-        
-#         ## -> preprocessing logic.
-
-
-# class StyleTransfer(Layer):
-
-#     def __init__(self, scale, *args, **kwargs):
-#         super().__init__(*args, **kwargs)
-#         self.scale = scale
-        
-#     def build(self, input_shape):
-#         s_shape, c_shape = input_shape
-        
-#         self.lap = LaplacianPyramid(5)
-#         self.inv_lap = InverseLaplacianPyramid()
-#         self.vgg = VGG16_pt(c_shape, inference_type='normal')
-
-#     def call(self, inputs):
-        
-#         stylized, content = inputs
-        
-#         s_pyr = self.lap(stylized)
-        
-#         z_c = self.vgg(content)
-#         z_s, s_img = extract_style_from_image(stylized, 1000, scale, 5)
-        
-#         stylized = self.inv_lap()
-#         return stylized, content
+        loss = objective_function(z_x, self.z_s, self.z_c)
+        grad = K.gradients(loss, x)
+        return loss, grad
 
 
 if __name__ == '__main__':
 
+    gpus = tf.config.experimental.list_physical_devices('GPU')
+    if gpus:
+        try:
+            for gpu in gpus:
+                tf.config.experimental.set_memory_growth(gpu, True)
+        except RuntimeError as e:
+            print(e)
+
     img = load_image('images/butterfly.jpg')
     print(img.shape)
 
-    # test vgg_pt
-    x = Input(shape=img.shape[1:])
-    vgg = VGG16_pt(input_shape=img.shape[1:], inference_type='cat')
+    # # test vgg_pt
+    # x = Input(shape=img.shape[1:])
+    # vgg = VGG16_pt(input_shape=img.shape[1:], inference_type='cat')
 
-    model = Model(x, vgg(x), name='extractor')
-    model.summary()
+    # model = Model(x, vgg(x), name='extractor')
+    # model.summary()
 
-    pred = model.predict(img)
-    if isinstance(pred, list):
-        for p in pred:
-            print(p.shape)
-    else:
-        print(pred.shape)
+    # pred = model.predict(img)
+    # if isinstance(pred, list):
+    #     for p in pred:
+    #         print(p.shape)
+    # else:
+    #     print(pred.shape)
 
-    # test lap_pyr
-    lap = LaplacianPyramid(levels=5)
-    l_model = Model(x, lap(x), name='lap_pyr')
-    l_model.summary()
+    # # test lap_pyr
+    # lap = LaplacianPyramid(levels=5)
+    # l_model = Model(x, lap(x), name='lap_pyr')
+    # l_model.summary()
 
-    hc = l_model.predict(img)
-    for h in hc:
-        print(h.shape, h.min(), h.max())
-        plt.imshow(np.clip(h[0] + .5, 0., 1.))
-        plt.show()
+    # hc = l_model.predict(img)
+    # for h in hc:
+    #     print(h.shape, h.min(), h.max())
+    #     plt.imshow(np.clip(h[0] + .5, 0., 1.))
+    #     plt.show()
 
-    # test inv_l_p
-    xs = []
-    for shape in l_model.output_shape:
-        xs.append(Input(shape=shape[1:]))
-    inv = InverseLaplacianPyramid()
-    i_model = Model(xs, inv(xs), name='inv_l_p')
-    i_model.summary()
+    # # test inv_l_p
+    # xs = []
+    # for shape in l_model.output_shape:
+    #     xs.append(Input(shape=shape[1:]))
+    # inv = InverseLaplacianPyramid()
+    # i_model = Model(xs, inv(xs), name='inv_l_p')
+    # i_model.summary()
 
-    res = i_model.predict(hc)
-    print(res.shape, res.min(), res.max())
-    plt.imshow(np.clip(res[0] + .5, 0., 1.))
-    plt.show()
+    # res = i_model.predict(hc)
+    # print(res.shape, res.min(), res.max())
+    # plt.imshow(np.clip(res[0] + .5, 0., 1.))
+    # plt.show()
+
+    # test style transfer
+    st_shape = img.shape[1:]
+    # x_s = Input(shape=st_shape)
+    # x_c = Input(shape=st_shape)
+    st = StyleTransfer(img, img, img, 64)
+    # st_model = Model([x_s, x_c], st([x_s, x_c]), name='style_transfer')
+    
+    loss, grad = st.predict(img)
+    print(loss)
+    print(grad)

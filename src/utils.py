@@ -3,24 +3,25 @@ import cv2
 import numpy as np
 from keras.layers import *
 from keras.models import Model
+import keras.backend as K
 import tensorflow as tf
 
 
-def extract_style_from_image(img, n_samples, scale, inner):
+# def extract_style_from_image(img, n_samples, scale, inner):
         
-    from src.model import VGG16_pt
+#     from model import VGG16_pt
     
-    z_img = load_image(img, max_side=scale, force_scale=True)
-    x = Input(shape=z_img.shape[1:])
-    vgg = VGG16_pt(z_img.shape[1:], inference_type='cat', n_samples=n_samples)
-    extractor = Model(x, vgg(x), name='extractor_vgg_pt')
+#     z_img = load_image(img, max_side=scale, force_scale=True)
+#     x = Input(shape=z_img.shape[1:])
+#     vgg = VGG16_pt(z_img.shape[1:], inference_type='cat', n_samples=n_samples)
+#     extractor = Model(x, vgg(x), name='extractor_vgg_pt')
     
-    zs = []
-    for i in range(inner):
-        zs.append(extractor.predict(z_img))
-    z = np.concatenate(zs, axis=2)
+#     zs = []
+#     for i in range(inner):
+#         zs.append(extractor.predict(z_img))
+#     z = np.concatenate(zs, axis=2)
     
-    return z, z_img
+#     return z, z_img
 
 
 def load_image(image, max_side=1000, force_scale=False, normalize=True):
@@ -86,10 +87,33 @@ def scale_max(x, max_side=1000., is_tensor=False):
     return x
 
 
+def rgb_to_yuv(x):
+    # I cannot understand why the value below is differ from general rgb-to-yuv formula, 
+    # but it works, though. 
+    c = K.constant([[0.577350,0.577350,0.577350],
+                    [-0.577350,0.788675,-0.211325],
+                    [-0.577350,-0.211325,0.788675]])
+    
+    return K.dot(x, K.transpose(c))
+
+
 if __name__ == '__main__':
     img = load_image('images/butterfly.jpg')
     long_side = 512
+
+    x = Input(shape=img.shape[1:])
+    model = Model(x, Lambda(lambda x: rgb_to_yuv(x))(x))
+
+    yuv = model.predict(img)
+    print(yuv.shape)
+    print(yuv.min(), yuv.max())
+
+    import matplotlib.pyplot as plt
+    fig, axes = plt.subplots(ncols=2)
+    axes[0].imshow(np.mean(img[0] * .5, axis=-1), cmap='gray')
+    axes[1].imshow(yuv[0, ..., 0] * .5, cmap='gray')
+    plt.show()
     
-    z, z_img = extract_style_from_image(img, 1000, long_side, 5)
-    print('z: {}'.format(z.shape))
-    print('z_img: {}'.format(z_img.shape))
+    # z, z_img = extract_style_from_image(img, 1000, long_side, 5)
+    # print('z: {}'.format(z.shape))
+    # print('z_img: {}'.format(z_img.shape))
