@@ -115,7 +115,7 @@ def pairwise_distance_cos(x, y):
     d = x.shape[-2]
     x_norm = K.reshape(K.sqrt(K.sum(K.square(x), axis=-1)), (-1, d, 1))
     y_norm = K.reshape(K.sqrt(K.sum(K.square(y), axis=-1)), (-1, 1, d))
-    y_t = K.permute_dimensions(y, tuple(range(len(y.shape) - 2)) + (-1, -2))
+    y_t = K.permute_dimensions(y, tuple(range(len(y.shape) - 2)) + (len(y.shape) - 1, len(y.shape) - 2))
 
     dist = 1. - (x @ y_t) / x_norm / y_norm
     return dist

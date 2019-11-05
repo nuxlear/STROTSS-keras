@@ -24,7 +24,7 @@ class LaplacianPyramid(Layer):
         super().__init__(*args, **kwargs)
         self.levels = levels
 
-    def call(self, inputs):
+    def call(self, inputs, mask=None):
         results = []
         cur = inputs
         for i in range(self.levels):
@@ -55,7 +55,7 @@ class InverseLaplacianPyramid(Layer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def call(self, inputs):
+    def call(self, inputs, mask=None):
         
         cur, pyrs = inputs[-1], inputs[:-1]
         for pyr in pyrs[::-1]:
@@ -70,9 +70,12 @@ class InverseLaplacianPyramid(Layer):
 
 class VGG16_pt(Layer):
 
-    def __init__(self, input_shape, inference_type=None, n_samples=100, *args, **kwargs):
+    def __init__(self, inputs, inference_type=None, n_samples=100, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.vgg = VGG16(weights='imagenet', include_top=False, input_shape=input_shape)
+        if isinstance(inputs, tuple):
+            self.vgg = VGG16(weights='imagenet', include_top=False, input_shape=inputs)
+        else:
+            self.vgg = VGG16(weights='imagenet', include_top=False, input_tensor=inputs)
         self.extracted_layers = [1, 2, 4, 5, 7, 8, 9, 13, 17]
 
         if inference_type is None:
@@ -91,14 +94,14 @@ class VGG16_pt(Layer):
         outputs = [x]
         for l in self.extracted_layers:
             out = x
-            for i in range(l+1):
+            for i in range(1, l+1):
                 out = self.vgg.layers[i](out)
             outputs.append(out)
         
         self.models = [Model(x, out, name='feat_{}'.format(i)) for i, out in enumerate(outputs)]
         super().build(input_shape)
 
-    def call(self, inputs):
+    def call(self, inputs, mask=None):
         if self.inference_type == 'normal':
             return self._call_normal(inputs)
         if self.inference_type == 'cat':
@@ -106,7 +109,12 @@ class VGG16_pt(Layer):
         raise ValueError('invalid inference type: {}'.format(self.inference_type))
 
     def _call_normal(self, inputs):
-        return [model(inputs) for model in self.models]
+        outputs = []
+        for model in self.models:
+            out = model(inputs)
+            outputs.append(out)
+        return outputs
+        # return [model(inputs) for model in self.models]
 
     def _call_cat(self, inputs):
         outputs = self._call_normal(inputs)
@@ -143,9 +151,9 @@ class VGG16_pt(Layer):
         return out
 
     def compute_output_shape(self, input_shape):
-        b = input_shape[0:1]
+        b = input_shape[0]
         if self.inference_type == 'normal':
-            return [b + model.output_shape[1:] for model in self.models]
+            return [(b,) + model.output_shape[1:] for model in self.models]
         if self.inference_type == 'cat':
             ch = sum([model.output_shape[-1] for model in self.models])
             n = min(input_shape[1] * input_shape[2], self.n_samples)
@@ -157,9 +165,9 @@ class StyleTransfer(Model):
     def __init__(self, base_img, style_img, content_img, scale, n_samples=1024, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.pyr = LaplacianPyramid(5)
-        self.vgg = VGG16_pt(base_img.shape[-3:], inference_type='normal', n_samples=n_samples)
-        
         self.x_img = K.variable(base_img)
+        
+        self.vgg = VGG16_pt(self.x_img, inference_type='normal', n_samples=n_samples)
 
         if not os.path.isfile('tmp_z_s.pkl'):
             self.z_s = preprocess_style_image(style_img, n_samples=n_samples, scale=scale, inner=1)
@@ -175,12 +183,21 @@ class StyleTransfer(Model):
         with open('tmp_z_c.pkl', 'rb') as f:
             self.z_c = pickle.load(f)
 
-    def call(self, inputs):
+    def call(self, inputs, mask=None):
         z_x = self.vgg(self.x_img)
 
         loss = objective_function(z_x, self.z_s, self.z_c)
-        grad = K.gradients(loss, x)
-        return loss, grad
+        grad = K.gradients(loss, self.x_img)
+        return self.x_img
+
+    def train_on_batch(self, x, y,
+                       sample_weight=None,
+                       class_weight=None,
+                       reset_metrics=True):
+        pass
+
+    def compute_output_shape(self, input_shape):
+        return input_shape[:1] + tuple(self.x_img.shape)[1:]
 
 
 if __name__ == '__main__':
@@ -240,7 +257,11 @@ if __name__ == '__main__':
     # x_c = Input(shape=st_shape)
     st = StyleTransfer(img, img, img, 64)
     # st_model = Model([x_s, x_c], st([x_s, x_c]), name='style_transfer')
-    
-    loss, grad = st.predict(img)
-    print(loss)
-    print(grad)
+
+    new_img = st.predict(img)
+    plt.imshow(new_img[0] * 0.5)
+    plt.show()
+    # loss, grad = st.predict(img)
+    # loss, grad = st(K.variable(img))
+    # print(loss)
+    # print(grad)
