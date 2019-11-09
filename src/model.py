@@ -75,7 +75,8 @@ class VGG16_pt(Layer):
         if isinstance(inputs, tuple):
             self.vgg = VGG16(weights='imagenet', include_top=False, input_shape=inputs)
         else:
-            self.vgg = VGG16(weights='imagenet', include_top=False, input_tensor=inputs)
+            self.vgg = VGG16(weights='imagenet', include_top=False,
+                             input_tensor=inputs, input_shape=K.int_shape(inputs)[1:])
         self.extracted_layers = [1, 2, 4, 5, 7, 8, 9, 13, 17]
 
         if inference_type is None:
@@ -109,12 +110,7 @@ class VGG16_pt(Layer):
         raise ValueError('invalid inference type: {}'.format(self.inference_type))
 
     def _call_normal(self, inputs):
-        outputs = []
-        for model in self.models:
-            out = model(inputs)
-            outputs.append(out)
-        return outputs
-        # return [model(inputs) for model in self.models]
+        return [model(inputs) for model in self.models]
 
     def _call_cat(self, inputs):
         outputs = self._call_normal(inputs)
@@ -169,6 +165,8 @@ class StyleTransfer(Model):
         
         self.vgg = VGG16_pt(self.x_img, inference_type='normal', n_samples=n_samples)
 
+        self.objective = objective_function
+
         if not os.path.isfile('tmp_z_s.pkl'):
             self.z_s = preprocess_style_image(style_img, n_samples=n_samples, scale=scale, inner=1)
             with open('tmp_z_s.pkl', 'wb') as f:
@@ -184,17 +182,36 @@ class StyleTransfer(Model):
             self.z_c = pickle.load(f)
 
     def call(self, inputs, mask=None):
-        z_x = self.vgg(self.x_img)
-
-        loss = objective_function(z_x, self.z_s, self.z_c)
-        grad = K.gradients(loss, self.x_img)
+        # z_x = self.vgg(self.x_img)
+        #
+        # loss = objective_function(z_x, self.z_s, self.z_c)
+        # self.add_loss(loss)
+        # grad = K.gradients(loss, self.x_img)
         return self.x_img
 
-    def train_on_batch(self, x, y,
+    def __update_image(self, loss):
+        if not hasattr(self, 'optimizer'):
+            raise RuntimeError('You must be compile your model before do style-transferring.')
+
+        self.x_img._keras_shape = self.x_img._shape
+        updates = self.optimizer.get_updates(loss, [self.x_img])
+        return updates
+
+    def train_on_batch(self, x=None, y=None,
                        sample_weight=None,
                        class_weight=None,
                        reset_metrics=True):
-        pass
+
+        z_x = self.vgg(self.x_img)
+        loss = objective_function(z_x, self.z_s, self.z_c)
+        # grad = K.gradients(loss, self.x_img)
+        updates = self.__update_image(loss)
+
+        train_function = K.function([],
+                                    [loss],
+                                    updates=updates)
+        output = train_function([])
+        return output
 
     def compute_output_shape(self, input_shape):
         return input_shape[:1] + tuple(self.x_img.shape)[1:]
@@ -202,6 +219,7 @@ class StyleTransfer(Model):
 
 if __name__ == '__main__':
 
+    # tf.compat.v1.disable_eager_execution()
     gpus = tf.config.experimental.list_physical_devices('GPU')
     if gpus:
         try:
@@ -258,7 +276,11 @@ if __name__ == '__main__':
     st = StyleTransfer(img, img, img, 64)
     # st_model = Model([x_s, x_c], st([x_s, x_c]), name='style_transfer')
 
+    st.compile(optimizer='rmsprop')
+
+    st.train_on_batch()
     new_img = st.predict(img)
+
     plt.imshow(new_img[0] * 0.5)
     plt.show()
     # loss, grad = st.predict(img)
