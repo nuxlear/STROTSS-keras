@@ -149,7 +149,7 @@ class VGG16_pt(Layer):
     def compute_output_shape(self, input_shape):
         b = input_shape[0]
         if self.inference_type == 'normal':
-            return [(b,) + model.output_shape[1:] for model in self.models]
+            return [(b,) + model.get_output_at(-1).shape[1:] for model in self.models]
         if self.inference_type == 'cat':
             ch = sum([model.output_shape[-1] for model in self.models])
             n = min(input_shape[1] * input_shape[2], self.n_samples)
@@ -213,6 +213,18 @@ class StyleTransfer(Model):
         output = train_function([])
         return output
 
+    def test_on_batch(self, x=None, y=None,
+                      sample_weight=None,
+                      reset_metrics=True):
+
+        z_x = self.vgg(self.x_img)
+        loss = objective_function(z_x, self.z_s, self.z_c)
+
+        train_function = K.function([],
+                                    [loss])
+        output = train_function([])
+        return output
+
     def compute_output_shape(self, input_shape):
         return input_shape[:1] + tuple(self.x_img.shape)[1:]
 
@@ -228,8 +240,10 @@ if __name__ == '__main__':
         except RuntimeError as e:
             print(e)
 
-    img = load_image('images/butterfly.jpg')
-    print(img.shape)
+    c_img = load_image('images/butterfly.jpg')
+    s_img = load_image('images/crayon.jpg')
+    print(c_img.shape)
+    print(s_img.shape)
 
     # # test vgg_pt
     # x = Input(shape=img.shape[1:])
@@ -270,16 +284,20 @@ if __name__ == '__main__':
     # plt.show()
 
     # test style transfer
-    st_shape = img.shape[1:]
+    st_shape = c_img.shape[1:]
     # x_s = Input(shape=st_shape)
     # x_c = Input(shape=st_shape)
-    st = StyleTransfer(img, img, img, 64)
+    st = StyleTransfer(c_img, s_img, c_img, 64)
     # st_model = Model([x_s, x_c], st([x_s, x_c]), name='style_transfer')
 
     st.compile(optimizer='rmsprop')
 
-    st.train_on_batch()
-    new_img = st.predict(img)
+    for i in range(200):
+        st.train_on_batch()
+        if i % 20 == 0:
+            losses = st.test_on_batch()
+            print(losses)
+    new_img = st.predict(c_img)
 
     plt.imshow(new_img[0] * 0.5)
     plt.show()
