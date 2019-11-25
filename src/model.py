@@ -74,6 +74,8 @@ class VGG16_pt(Layer):
         super().__init__(*args, **kwargs)
         if isinstance(inputs, tuple):
             self.vgg = VGG16(weights='imagenet', include_top=False, input_shape=inputs)
+        elif not K.is_variable(inputs):
+            self.vgg = VGG16(weights='imagenet', include_top=False, input_shape=K.int_shape(inputs)[1:])
         else:
             self.vgg = VGG16(weights='imagenet', include_top=False,
                              input_tensor=inputs, input_shape=K.int_shape(inputs)[1:])
@@ -106,13 +108,13 @@ class VGG16_pt(Layer):
         if self.inference_type == 'normal':
             return self._call_normal(inputs)
         if self.inference_type == 'cat':
-            return self._call_cat(inputs)
+            return self._call_cat(inputs, mask)
         raise ValueError('invalid inference type: {}'.format(self.inference_type))
 
     def _call_normal(self, inputs):
         return [model(inputs) for model in self.models]
 
-    def _call_cat(self, inputs):
+    def _call_cat(self, inputs, mask=None):
         outputs = self._call_normal(inputs)
 
         xx, xy = np.meshgrid(np.array(range(inputs.shape[1])), np.array(range(inputs.shape[2])))
@@ -120,10 +122,13 @@ class VGG16_pt(Layer):
         xy = np.expand_dims(xy.flatten(), 1)
         xc = np.concatenate([xx, xy], axis=1)
 
+        if mask is not None:
+            xc = xc[mask, :]
+
         n_samples = min(self.n_samples, len(xc))
 
         xx = xc[:n_samples, 0]
-        yy = xc[:n_samples, 0]
+        yy = xc[:n_samples, 1]
 
         ## Need to understand of PyTorch tensor shaping ##
 
@@ -160,8 +165,13 @@ class StyleTransfer(Model):
 
     def __init__(self, base_img, style_img, content_img, scale, n_samples=1024, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.pyr = LaplacianPyramid(5)
-        self.x_img = K.variable(base_img)
+        self.pyr = self.__get_laplacian_pyramid_model(base_img)
+        self.x_imgs = [K.variable(t) for t in self.pyr.predict(base_img)]
+
+        self.inv_pyr = self.__get_inv_laplacian_pyramid_model(self.x_imgs)
+        # self.x_img = K.variable(base_img)
+
+        self.x_img = self.inv_pyr(self.x_imgs)
         
         self.vgg = VGG16_pt(self.x_img, inference_type='normal', n_samples=n_samples)
 
@@ -181,20 +191,46 @@ class StyleTransfer(Model):
         with open('tmp_z_c.pkl', 'rb') as f:
             self.z_c = pickle.load(f)
 
+        self.train_function = None
+        self.test_function = None
+
+    def __get_laplacian_pyramid_model(self, img):
+        pyr = LaplacianPyramid(5)
+        x = Input(shape=img.shape[1:])
+        return Model(x, pyr(x), name='lap_pyr')
+
+    def __get_inv_laplacian_pyramid_model(self, pyrs):
+        inv = InverseLaplacianPyramid()
+        xs = [Input(shape=x.shape[1:]) for x in pyrs]
+        return Model(xs, inv(xs), name='inv_lap_pyr')
+
+    def __init_train_function(self):
+        z_x = self.vgg(self.x_img)
+        loss = objective_function(z_x, self.z_s, self.z_c)
+        updates = self.__update_image(self.x_imgs, loss)
+
+        self.train_function = K.function([],
+                                         [loss],
+                                         updates=updates)
+
+    def __init_test_function(self):
+        z_x = self.vgg(self.x_img)
+        loss = objective_function(z_x, self.z_s, self.z_c)
+
+        self.test_function = K.function([],
+                                        [loss])
+
     def call(self, inputs, mask=None):
-        # z_x = self.vgg(self.x_img)
-        #
-        # loss = objective_function(z_x, self.z_s, self.z_c)
-        # self.add_loss(loss)
-        # grad = K.gradients(loss, self.x_img)
         return self.x_img
 
-    def __update_image(self, loss):
+    def __update_image(self, x, loss):
         if not hasattr(self, 'optimizer'):
             raise RuntimeError('You must be compile your model before do style-transferring.')
 
-        self.x_img._keras_shape = self.x_img._shape
-        updates = self.optimizer.get_updates(loss, [self.x_img])
+        # self.x_img._keras_shape = self.x_img._shape
+        for t in x:
+            t._keras_shape = t._shape
+        updates = self.optimizer.get_updates(loss, x)
         return updates
 
     def train_on_batch(self, x=None, y=None,
@@ -202,28 +238,21 @@ class StyleTransfer(Model):
                        class_weight=None,
                        reset_metrics=True):
 
-        z_x = self.vgg(self.x_img)
-        loss = objective_function(z_x, self.z_s, self.z_c)
-        # grad = K.gradients(loss, self.x_img)
-        updates = self.__update_image(loss)
+        # randomly choose region and update
 
-        train_function = K.function([],
-                                    [loss],
-                                    updates=updates)
-        output = train_function([])
-        return output
+        if self.train_function is None:
+            self.__init_train_function()
+
+        return self.train_function([])
 
     def test_on_batch(self, x=None, y=None,
                       sample_weight=None,
                       reset_metrics=True):
 
-        z_x = self.vgg(self.x_img)
-        loss = objective_function(z_x, self.z_s, self.z_c)
+        if self.test_function is None:
+            self.__init_test_function()
 
-        train_function = K.function([],
-                                    [loss])
-        output = train_function([])
-        return output
+        return self.test_function([])
 
     def compute_output_shape(self, input_shape):
         return input_shape[:1] + tuple(self.x_img.shape)[1:]
@@ -287,19 +316,29 @@ if __name__ == '__main__':
     st_shape = c_img.shape[1:]
     # x_s = Input(shape=st_shape)
     # x_c = Input(shape=st_shape)
-    st = StyleTransfer(c_img, s_img, c_img, 64)
+    st = StyleTransfer(c_img, s_img, c_img, 512)
     # st_model = Model([x_s, x_c], st([x_s, x_c]), name='style_transfer')
 
     st.compile(optimizer='rmsprop')
 
-    for i in range(200):
+    os.makedirs('results', exist_ok=True)
+
+    n_iter = 100000
+    n_log_step = 2000
+    n_eval_step = 100
+
+    for i in range(n_iter):
         st.train_on_batch()
-        if i % 20 == 0:
+        if i % n_eval_step == 0:
             losses = st.test_on_batch()
             print(losses)
+        if i % n_log_step == 0:
+            new_img = st.predict(c_img)
+            plt.imsave('results/basic_{:03}.png'.format(i // n_log_step), np.clip(new_img[0] + 0.5, 0., 1.))
+            print('image saved!')
     new_img = st.predict(c_img)
 
-    plt.imshow(new_img[0] * 0.5)
+    plt.imshow(np.clip(new_img[0] + 0.5, 0., 1.))
     plt.show()
     # loss, grad = st.predict(img)
     # loss, grad = st(K.variable(img))
