@@ -106,13 +106,13 @@ class VGG16_pt(Layer):
         if self.inference_type == 'normal':
             return self._call_normal(inputs)
         if self.inference_type == 'cat':
-            return self._call_cat(inputs)
+            return self._call_cat(inputs, mask)
         raise ValueError('invalid inference type: {}'.format(self.inference_type))
 
     def _call_normal(self, inputs):
         return [model(inputs) for model in self.models]
 
-    def _call_cat(self, inputs):
+    def _call_cat(self, inputs, mask=None):
         outputs = self._call_normal(inputs)
 
         xx, xy = np.meshgrid(np.array(range(inputs.shape[1])), np.array(range(inputs.shape[2])))
@@ -120,10 +120,12 @@ class VGG16_pt(Layer):
         xy = np.expand_dims(xy.flatten(), 1)
         xc = np.concatenate([xx, xy], axis=1)
 
+        xc = xc[mask, :]
+
         n_samples = min(self.n_samples, len(xc))
 
         xx = xc[:n_samples, 0]
-        yy = xc[:n_samples, 0]
+        yy = xc[:n_samples, 1]
 
         ## Need to understand of PyTorch tensor shaping ##
 
@@ -231,7 +233,7 @@ class StyleTransfer(Model):
 
 if __name__ == '__main__':
 
-    # tf.compat.v1.disable_eager_execution()
+    tf.compat.v1.disable_eager_execution()
     gpus = tf.config.experimental.list_physical_devices('GPU')
     if gpus:
         try:
