@@ -74,6 +74,8 @@ class VGG16_pt(Layer):
         super().__init__(*args, **kwargs)
         if isinstance(inputs, tuple):
             self.vgg = VGG16(weights='imagenet', include_top=False, input_shape=inputs)
+        elif not K.is_variable(inputs):
+            self.vgg = VGG16(weights='imagenet', include_top=False, input_shape=K.int_shape(inputs)[1:])
         else:
             self.vgg = VGG16(weights='imagenet', include_top=False,
                              input_tensor=inputs, input_shape=K.int_shape(inputs)[1:])
@@ -120,7 +122,8 @@ class VGG16_pt(Layer):
         xy = np.expand_dims(xy.flatten(), 1)
         xc = np.concatenate([xx, xy], axis=1)
 
-        xc = xc[mask, :]
+        if mask is not None:
+            xc = xc[mask, :]
 
         n_samples = min(self.n_samples, len(xc))
 
@@ -162,10 +165,13 @@ class StyleTransfer(Model):
 
     def __init__(self, base_img, style_img, content_img, scale, n_samples=1024, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.pyr = LaplacianPyramid(5)
-        self.inv_pyr = InverseLaplacianPyramid()
-        self.x_img = K.variable(base_img)
-        self.x_imgs = [K.variable(t) for t in self.pyr(self.x_img)]
+        self.pyr = self.__get_laplacian_pyramid_model(base_img)
+        self.x_imgs = [K.variable(t) for t in self.pyr.predict(base_img)]
+
+        self.inv_pyr = self.__get_inv_laplacian_pyramid_model(self.x_imgs)
+        # self.x_img = K.variable(base_img)
+
+        self.x_img = self.inv_pyr(self.x_imgs)
         
         self.vgg = VGG16_pt(self.x_img, inference_type='normal', n_samples=n_samples)
 
@@ -188,6 +194,16 @@ class StyleTransfer(Model):
         self.train_function = None
         self.test_function = None
 
+    def __get_laplacian_pyramid_model(self, img):
+        pyr = LaplacianPyramid(5)
+        x = Input(shape=img.shape[1:])
+        return Model(x, pyr(x), name='lap_pyr')
+
+    def __get_inv_laplacian_pyramid_model(self, pyrs):
+        inv = InverseLaplacianPyramid()
+        xs = [Input(shape=x.shape[1:]) for x in pyrs]
+        return Model(xs, inv(xs), name='inv_lap_pyr')
+
     def __init_train_function(self):
         z_x = self.vgg(self.x_img)
         loss = objective_function(z_x, self.z_s, self.z_c)
@@ -205,7 +221,8 @@ class StyleTransfer(Model):
                                         [loss])
 
     def call(self, inputs, mask=None):
-        return self.inv_pyr(self.x_imgs)
+        return self.x_img
+        # return self.inv_pyr(self.x_imgs)
 
     # def __update_image(self, loss):
     #     if not hasattr(self, 'optimizer'):
@@ -249,7 +266,7 @@ class StyleTransfer(Model):
 
 if __name__ == '__main__':
 
-    tf.compat.v1.disable_eager_execution()
+    # tf.compat.v1.disable_eager_execution()
     gpus = tf.config.experimental.list_physical_devices('GPU')
     if gpus:
         try:
@@ -310,11 +327,13 @@ if __name__ == '__main__':
 
     st.compile(optimizer='rmsprop')
 
-    for i in range(1000):
+    for i in range(1000000):
         st.train_on_batch()
-        if i % 50 == 0:
+        if i % 100 == 0:
             losses = st.test_on_batch()
             print(losses)
+        if i % 100000 == 0:
+            new_img = st.predict(c_img)
     new_img = st.predict(c_img)
 
     plt.imshow(new_img[0] * 0.5)
