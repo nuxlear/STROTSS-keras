@@ -222,15 +222,7 @@ class StyleTransfer(Model):
 
     def call(self, inputs, mask=None):
         return self.x_img
-        # return self.inv_pyr(self.x_imgs)
 
-    # def __update_image(self, loss):
-    #     if not hasattr(self, 'optimizer'):
-    #         raise RuntimeError('You must be compile your model before do style-transferring.')
-    #
-    #     self.x_img._keras_shape = self.x_img._shape
-    #     updates = self.optimizer.get_updates(loss, [self.x_img])
-    #     return updates
     def __update_image(self, x, loss):
         if not hasattr(self, 'optimizer'):
             raise RuntimeError('You must be compile your model before do style-transferring.')
@@ -245,6 +237,8 @@ class StyleTransfer(Model):
                        sample_weight=None,
                        class_weight=None,
                        reset_metrics=True):
+
+        # randomly choose region and update
 
         if self.train_function is None:
             self.__init_train_function()
@@ -322,21 +316,29 @@ if __name__ == '__main__':
     st_shape = c_img.shape[1:]
     # x_s = Input(shape=st_shape)
     # x_c = Input(shape=st_shape)
-    st = StyleTransfer(c_img, s_img, c_img, 64)
+    st = StyleTransfer(c_img, s_img, c_img, 512)
     # st_model = Model([x_s, x_c], st([x_s, x_c]), name='style_transfer')
 
     st.compile(optimizer='rmsprop')
 
-    for i in range(1000000):
+    os.makedirs('results', exist_ok=True)
+
+    n_iter = 100000
+    n_log_step = 2000
+    n_eval_step = 100
+
+    for i in range(n_iter):
         st.train_on_batch()
-        if i % 100 == 0:
+        if i % n_eval_step == 0:
             losses = st.test_on_batch()
             print(losses)
-        if i % 100000 == 0:
+        if i % n_log_step == 0:
             new_img = st.predict(c_img)
+            plt.imsave('results/basic_{:03}.png'.format(i // n_log_step), np.clip(new_img[0] + 0.5, 0., 1.))
+            print('image saved!')
     new_img = st.predict(c_img)
 
-    plt.imshow(new_img[0] * 0.5)
+    plt.imshow(np.clip(new_img[0] + 0.5, 0., 1.))
     plt.show()
     # loss, grad = st.predict(img)
     # loss, grad = st(K.variable(img))

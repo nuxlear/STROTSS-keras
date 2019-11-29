@@ -7,7 +7,8 @@ from src.utils import *
 def objective_function(z_x, z_s, z_c, content_weight=4.):
     loss = 0.
 
-    x_st, c_st = extract_spatial(z_x, z_c)
+    ix, iy = sample_indices(z_x, z_c)
+    x_st, c_st = extract_spatial(z_x, z_c, ix, iy)
     
     s_loss, used_style_feats = remd_loss(x_st, z_s[0])
     c_loss = dp_loss(x_st, c_st)
@@ -78,21 +79,62 @@ def moment_loss(x, y):
     pass
 
 
-def extract_spatial(z_x, z_c, n_samples=1024):
+def sample_indices(z_x, z_c, n_sample=1024):
+
+    c = 128 ** 2
+
+    ix, iy = [], []
+
+    for x, s in zip(z_x, z_c):
+        h, w = x.shape[1:3]
+        size = h * w
+
+        stride_x = int(max(np.floor(np.sqrt(size // c)), 1))
+        offset_x = np.random.randint(stride_x)
+
+        stride_y = int(max(np.ceil(np.sqrt(size // c)), 1))
+        offset_y = np.random.randint(stride_y)
+
+        xx, xy = np.meshgrid(np.arange(h)[offset_x::stride_x], np.arange(w)[offset_y::stride_y])
+        xx = xx.flatten()
+        xy = xy.flatten()
+        # zx = np.arange(s.shape[1])
+
+        r = np.random.permutation(n_sample)
+        while np.max(r) > len(xx):
+            r = r // 2
+
+        ix.append(xx[r])
+        iy.append(xy[r])
+        # iy.append(zx[r])
+
+    return ix, iy
+
+
+def extract_spatial(z_x, z_c, xx, xy):
     xs, cs = [], []
 
-    for i, (x, c) in enumerate(zip(z_x, z_c)):
-        x = K.reshape(x, (-1, x.shape[1] * x.shape[2], x.shape[3]))
-        c = K.reshape(c, (-1, c.shape[1] * c.shape[2], c.shape[3]))
+    for i, (x, c, ix, iy) in enumerate(zip(z_x, z_c, xx, xy)):
+        h, w, d = x.shape[1:]
 
-        # randomly choose regions
-        # idx = K.constant(np.random.permutation(x.shape[1]), dtype=tf.int32)
-        idx = K.constant(np.random.permutation(n_samples), dtype=tf.int32)
-        x = K.permute_dimensions(K.gather(K.permute_dimensions(x, (1, 0, 2)), idx), (1, 0, 2))
-        c = K.permute_dimensions(K.gather(K.permute_dimensions(c, (1, 0, 2)), idx), (1, 0, 2))
-        # x = tf.gather_nd(x, idx)
-        # c = tf.gather_nd(c, idx)
+        idx = ix * x.shape[2] + iy
+        x = K.reshape(x, (h * w, d))
+        c = K.reshape(c, (h * w, d))
 
+        x = K.reshape(K.gather(x, idx), (1, -1, d))
+        c = K.reshape(K.gather(c, idx), (1, -1, d))
+
+        # x = K.reshape(x, (-1, x.shape[1] * x.shape[2], x.shape[3]))
+        # c = K.reshape(c, (-1, c.shape[1] * c.shape[2], c.shape[3]))
+        #
+        # # randomly choose regions
+        # # idx = K.constant(np.random.permutation(x.shape[1]), dtype=tf.int32)
+        # idx = K.constant(np.random.permutation(n_samples), dtype=tf.int32)
+        # x = K.permute_dimensions(K.gather(K.permute_dimensions(x, (1, 0, 2)), idx), (1, 0, 2))
+        # c = K.permute_dimensions(K.gather(K.permute_dimensions(c, (1, 0, 2)), idx), (1, 0, 2))
+        # # x = tf.gather_nd(x, idx)
+        # # c = tf.gather_nd(c, idx)
+        #
         xs.append(x)
         cs.append(c)
     
