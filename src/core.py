@@ -32,25 +32,28 @@ def laplacian_pyramid(imgs, steps: int=1):
     return np.array(results)
 
 
-def style_transfer(style_img, content_img, long_side, lr=1e-3, content_weight=1.):
+def style_transfer(base_img, style_img, content_img, long_side, lr=1e-3, content_weight=1.):
 
     ## Definitions
 
     MAX_ITER = 250
     
     optimizer = RMSprop(lr=lr)
-    loss = REMD_loss
 
     ## Preparation
 
-    st_model = StyleTransfer(long_side)
-    
-    
+    st_model = StyleTransfer(base_img, style_img, content_img, long_side)
+    st_model.compile(optimizer=optimizer)
 
     ## Training
 
     for i in range(MAX_ITER):
-        pass
+        st_model.train_on_batch()
+        if i % n_eval_step == 0:
+            losses = st.test_on_batch()
+            print(losses)
+
+    return st_model()
 
 
 def run(style_img, content_img, content_weight=16, max_scale=5):
