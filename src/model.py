@@ -18,6 +18,28 @@ from src.loss import *
 from src.preprocess import *
 
 
+def preprocess_style_image(img, n_samples=1024, scale=512, inner=1):
+    z_img = load_image(img, max_side=scale, force_scale=True)
+    x = Input(shape=z_img.shape[1:])
+    vgg = VGG16_pt(z_img.shape[1:], inference_type='cat', n_samples=n_samples)
+    model = Model(x, vgg(x), name='vgg_pt_cat')
+
+    zs = []
+    for i in range(inner):
+        zs.append(model.predict(z_img))
+    z = np.concatenate(zs, axis=2)
+
+    return z, z_img
+
+
+def preprocess_content_image(img, n_samples=1024):
+    x = Input(shape=img.shape[1:])
+    vgg = VGG16_pt(img.shape[1:], inference_type='normal', n_samples=n_samples)
+    model = Model(x, vgg(x), name='vgg_pt_normal')
+
+    return model.predict(img)
+
+
 class LaplacianPyramid(Layer):
 
     def __init__(self, levels=1, *args, **kwargs):
@@ -177,19 +199,24 @@ class StyleTransfer(Model):
 
         self.objective = objective_function
 
-        if not os.path.isfile('tmp_z_s.pkl'):
-            self.z_s = preprocess_style_image(style_img, n_samples=n_samples, scale=scale, inner=1)
-            with open('tmp_z_s.pkl', 'wb') as f:
-                pickle.dump(self.z_s, f)
-        if not os.path.isfile('tmp_z_c.pkl'):
-            self.z_c = preprocess_content_image(content_img, n_samples=n_samples)
-            with open('tmp_z_c.pkl', 'wb') as f:
-                    pickle.dump(self.z_c, f)
+        # if not os.path.isfile('tmp_z_s.pkl'):
+        #     self.z_s = preprocess_style_image(style_img, n_samples=n_samples, scale=scale, inner=1)
+        #     with open('tmp_z_s.pkl', 'wb') as f:
+        #         pickle.dump(self.z_s, f)
+        # if not os.path.isfile('tmp_z_c.pkl'):
+        #     self.z_c = preprocess_content_image(content_img, n_samples=n_samples)
+        #     with open('tmp_z_c.pkl', 'wb') as f:
+        #             pickle.dump(self.z_c, f)
+        #
+        # with open('tmp_z_s.pkl', 'rb') as f:
+        #     self.z_s = pickle.load(f)
+        # with open('tmp_z_c.pkl', 'rb') as f:
+        #     self.z_c = pickle.load(f)
 
-        with open('tmp_z_s.pkl', 'rb') as f:
-            self.z_s = pickle.load(f)
-        with open('tmp_z_c.pkl', 'rb') as f:
-            self.z_c = pickle.load(f)
+        print('Preprocessing...')
+        self.z_s = preprocess_style_image(style_img, n_samples=n_samples, scale=scale, inner=1)
+        self.z_c = preprocess_content_image(content_img, n_samples=n_samples)
+        print('Preprocess Finished: {}'.format(base_img.shape))
 
         self.train_function = None
         self.test_function = None

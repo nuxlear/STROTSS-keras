@@ -18,7 +18,7 @@ def objective_function(z_x, z_s, z_c, content_weight=4.):
 
     # loss = ((content_weight * c_loss) + m_loss + s_loss + (p_loss / content_weight)) \
     #      / (2. + content_weight + 1/content_weight)
-    loss = (content_weight * c_loss) + s_loss \
+    loss = (content_weight * c_loss + s_loss) \
          / (2. + content_weight + 1/content_weight)
     return loss
     
