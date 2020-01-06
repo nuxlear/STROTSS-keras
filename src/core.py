@@ -59,7 +59,7 @@ def style_transfer(base_img, style_img, content_img, long_side, lr=1e-3, content
 
     ## Definitions
 
-    n_iter = 2000
+    n_iter = 201
     n_eval_step = 100
     
     optimizer = RMSprop(lr=lr)
@@ -87,7 +87,7 @@ def run(style_img, content_img, content_weight=16, max_scale=5):
 
     content_img_big = scale_max(content_img, 512)
 
-    for scale in range(1, max_scale):
+    for scale in range(1, max_scale + 1):
 
         long_side = small_sz * (2**(scale - 1))
         lr = lrs[scale]
@@ -137,7 +137,7 @@ if __name__ == '__main__':
             print(e)
 
     style = load_image('../images/sketch.jpg')
-    content = load_image('../images/butterfly.jpg')
+    content = load_image('../images/crayon.jpg')
 
     run(style, content)
     # lap = laplacian_pyramid(img[np.newaxis, :])
