@@ -90,7 +90,7 @@ def run(style_img, content_img, content_weight=16, max_scale=5):
     for scale in range(1, max_scale + 1):
 
         long_side = small_sz * (2**(scale - 1))
-        lr = lrs[scale]
+        lr = lrs[scale - 1]
 
         style = scale_max(style_img, long_side)
         content = scale_max(content_img, long_side)
