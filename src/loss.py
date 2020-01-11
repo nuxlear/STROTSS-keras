@@ -13,12 +13,13 @@ def objective_function(z_x, z_s, z_c, content_weight=4.):
     s_loss, used_style_feats = remd_loss(x_st, z_s[0])
     c_loss = dp_loss(x_st, c_st)
 
-    # m_loss = moment_loss()
+    # m_loss = moment_loss(x_st, z_s[0])
+    m_loss = 0
     # p_loss = remd_loss()
 
     # loss = ((content_weight * c_loss) + m_loss + s_loss + (p_loss / content_weight)) \
     #      / (2. + content_weight + 1/content_weight)
-    loss = (content_weight * c_loss + s_loss) \
+    loss = (content_weight * c_loss + m_loss + s_loss) \
          / (2. + content_weight + 1/content_weight)
     return loss
     
@@ -75,8 +76,30 @@ def dp_loss(x, y):
     return d
 
 
-def moment_loss(x, y):
-    pass
+def moment_loss(x, y, moments=(1, 2)):
+    d = x.shape[1]
+
+    l = 0.
+
+    x = K.reshape(x, (d, -1))
+    y = K.reshape(y, (d, -1))
+
+    mu_x = K.mean(x, 0, keepdims=True)
+    mu_y = K.mean(y, 0, keepdims=True)
+    mu_d = K.mean(K.abs(mu_x - mu_y))
+
+    if 1 in moments:
+        l += mu_d
+
+    if 2 in moments:
+        d_x, d_y = x - mu_x, y - mu_y
+
+        sig_x = K.transpose(d_x) @ d_x
+        sig_y = K.transpose(d_y) @ d_y
+        sig_d = K.mean(K.abs(sig_x - sig_y))
+        l += sig_d
+
+    return l
 
 
 def sample_indices(z_x, z_c, n_sample=1024):
