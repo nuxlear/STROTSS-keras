@@ -13,23 +13,16 @@ def objective_function(z_x, z_s, z_c, content_weight=4.):
     s_loss, used_style_feats = remd_loss(x_st, z_s[0])
     c_loss = dp_loss(x_st, c_st)
 
-    # m_loss = moment_loss(x_st, z_s[0])
-    m_loss = 0
-    # p_loss = remd_loss()
+    m_loss = moment_loss(x_st, z_s[0])
+    # m_loss = 0
+    p_loss, _ = remd_loss(x_st[..., :3], z_s[0][..., :3], dist='l2')
 
-    # loss = ((content_weight * c_loss) + m_loss + s_loss + (p_loss / content_weight)) \
-    #      / (2. + content_weight + 1/content_weight)
-    loss = (content_weight * c_loss + m_loss + s_loss) \
+    loss = (content_weight * c_loss + m_loss + s_loss + p_loss / content_weight) \
          / (2. + content_weight + 1/content_weight)
     return loss
-    
-
-# def remd_loss(y_true, y_pred):
-#     """ Relaxed Earth Mover Distance (EMD) Loss """
-#     pass
 
 
-def remd_loss(x, y, return_mat=False):
+def remd_loss(x, y, dist='cos', return_mat=False):
     # for x, s in zip(z_x, z_s):
     #     ch = x.shape[-1]
 
@@ -41,7 +34,7 @@ def remd_loss(x, y, return_mat=False):
     x = K.reshape(x, (-1, d, ch))
     y = K.reshape(y, (d, ch))
 
-    cx_m = get_d_mat(x, y, 'cos')
+    cx_m = get_d_mat(x, y, dist)
     
     if return_mat:
         return cx_m

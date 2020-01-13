@@ -15,25 +15,27 @@ from src.loss import *
 from src.preprocess import *
 
 
-def preprocess_style_image(img, n_samples=1024, scale=512, inner=1):
-    z_img = load_image(img, max_side=scale, force_scale=True)
-    x = Input(shape=z_img.shape[1:])
-    vgg = VGG16_pt(z_img.shape[1:], inference_type='cat', n_samples=n_samples)
-    model = Model(x, vgg(x), name='vgg_pt_cat')
-
-    zs = []
-    for i in range(inner):
-        zs.append(model.predict(z_img))
-    z = np.concatenate(zs, axis=2)
-
-    return z, z_img
-
-def preprocess_content_image(img, n_samples=1024):
-    x = Input(shape=img.shape[1:])
-    vgg = VGG16_pt(img.shape[1:], inference_type='normal', n_samples=n_samples)
-    model = Model(x, vgg(x), name='vgg_pt_normal')
-
-    return model.predict(img)
+# def preprocess_style_image(img, model=None, n_samples=1024, scale=512, inner=1):
+#     z_img = load_image(img, max_side=scale, force_scale=True)
+#     if model is None:
+#         x = Input(shape=z_img.shape[1:])
+#         vgg = VGG16_pt(z_img.shape[1:], inference_type='cat', n_samples=n_samples)
+#         model = Model(x, vgg(x), name='vgg_pt_cat')
+#
+#     zs = []
+#     for i in range(inner):
+#         zs.append(model.predict(z_img))
+#     z = np.concatenate(zs, axis=2)
+#
+#     return z, z_img, model
+#
+# def preprocess_content_image(img, model=None, n_samples=1024):
+#     if model is None:
+#         x = Input(shape=img.shape[1:])
+#         vgg = VGG16_pt(img.shape[1:], inference_type='normal', n_samples=n_samples)
+#         model = Model(x, vgg(x), name='vgg_pt_normal')
+#
+#     return model.predict(img), model
 
 
 def laplacian_pyramid(imgs, steps: int=1):
@@ -106,7 +108,7 @@ def run(style_img, content_img, content_weight=16, max_scale=5):
             # canvas = resize(content, ratio=1/2)
             base = style_mean + lap
         else:
-            base = resize(base, size=content.shape[1:3])
+            base = resize(base, size=content.shape[1:3]) + lap
             if scale < max_scale - 1:
                 base += lap
 
