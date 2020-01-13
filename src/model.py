@@ -20,6 +20,7 @@ from src.preprocess import *
 
 def preprocess_style_image(img, n_samples=1024, scale=512, inner=1):
     z_img = load_image(img, max_side=scale, force_scale=True)
+
     x = Input(shape=z_img.shape[1:])
     vgg = VGG16_pt(z_img.shape[1:], inference_type='cat', n_samples=n_samples)
     model = Model(x, vgg(x), name='vgg_pt_cat')
@@ -111,7 +112,7 @@ class VGG16_pt(Layer):
         if inference_type == 'cat':
             self.n_samples = n_samples
 
-        self.vgg.trainable=False
+        self.vgg.trainable = False
 
     def build(self, input_shape):
         x = Input(shape=input_shape[1:])
