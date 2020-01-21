@@ -24,6 +24,15 @@ import tensorflow as tf
 #     return z, z_img
 
 
+class Singleton(type):
+    _instance = None
+
+    def __call__(cls, *args, **kwargs):
+        if not cls._instance:
+            cls._instance = super(Singleton, cls).__call__(*args, **kwargs)
+        return cls._instance
+
+
 def load_image(image, max_side=1000, force_scale=False, normalize=True):
 
     x = image

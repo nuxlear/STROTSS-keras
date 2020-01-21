@@ -140,15 +140,15 @@ class VGG16_pt(Layer):
     def _call_cat(self, inputs, mask=None):
         outputs = self._call_normal(inputs)
 
-        xx, xy = np.meshgrid(np.array(range(inputs.shape[1])), np.array(range(inputs.shape[2])))
-        xx = np.expand_dims(xx.flatten(), 1)
-        xy = np.expand_dims(xy.flatten(), 1)
-        xc = np.concatenate([xx, xy], axis=1)
+        xx, xy = tf.meshgrid(K.arange(inputs.shape[1]), K.arange(inputs.shape[2]))
+        xx = K.expand_dims(K.flatten(xx), 1)
+        xy = K.expand_dims(K.flatten(xy), 1)
+        xc = K.concatenate([xx, xy], axis=1)
 
         if mask is not None:
             xc = xc[mask, :]
 
-        n_samples = min(self.n_samples, len(xc))
+        n_samples = min(self.n_samples, xc.shape[0])
 
         xx = xc[:n_samples, 0]
         yy = xc[:n_samples, 1]
@@ -157,17 +157,19 @@ class VGG16_pt(Layer):
 
         ls = []
         for i, out in enumerate(outputs):
+            b, w, h, c = out.shape
             x = out
 
             if i > 0 and out.shape[1] < outputs[i-1].shape[1]:
-                xx = xx / 2.
-                yy = yy / 2.
+                xx = K.cast(xx, 'float32') / 2.
+                yy = K.cast(yy, 'float32') / 2.
 
-            xx = np.clip(xx, 0, out.shape[1]-1).astype('int32')
-            yy = np.clip(yy, 0, out.shape[2]-1).astype('int32')
+            xx = K.cast(K.clip(xx, 0, out.shape[1]-1), 'int32')
+            yy = K.cast(K.clip(yy, 0, out.shape[2]-1), 'int32')
 
-            xs = [x[:, xx[i], yy[i]][:, tf.newaxis, tf.newaxis] for i in range(n_samples)]
-            x = K.concatenate(xs, axis=1)
+            idx = xx * h + yy
+            x = tf.gather(K.reshape(x, (-1, w * h, c)), idx, axis=1)
+            x = K.expand_dims(x, axis=2)
 
             ls.append(x)    # NOTICE: the original code do clone() and detach()
         
@@ -181,7 +183,7 @@ class VGG16_pt(Layer):
         if self.inference_type == 'cat':
             ch = sum([model.output_shape[-1] for model in self.models])
             n = min(input_shape[1] * input_shape[2], self.n_samples)
-            return (b, n, 1, ch)
+            return b, n, 1, ch
 
 
 class StyleTransfer(Model):
@@ -214,10 +216,12 @@ class StyleTransfer(Model):
         # with open('tmp_z_c.pkl', 'rb') as f:
         #     self.z_c = pickle.load(f)
 
-        print('Preprocessing...')
+        print('Preprocessing...', flush=True)
         self.z_s = preprocess_style_image(style_img, n_samples=n_samples, scale=scale, inner=1)
+        print('Preprocess [style] Finished', flush=True)
         self.z_c = preprocess_content_image(content_img, n_samples=n_samples)
-        print('Preprocess Finished: {}'.format(base_img.shape))
+        print('Preprocess [content] Finished', flush=True)
+        print('Preprocess Finished: {}'.format(base_img.shape), flush=True)
 
         self.train_function = None
         self.test_function = None
