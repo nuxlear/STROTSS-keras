@@ -1,8 +1,6 @@
 import sys
 sys.path.append('.')
 
-from keras.layers import *
-from keras.models import Model
 from keras.applications import VGG16
 import keras.backend as K
 import tensorflow as tf
@@ -11,11 +9,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 import os
-import pickle
 
 from src.utils import *
 from src.loss import *
-from src.preprocess import *
 
 
 def preprocess_style_image(img, n_samples=1024, scale=512, inner=1):
@@ -140,15 +136,15 @@ class VGG16_pt(Layer):
     def _call_cat(self, inputs, mask=None):
         outputs = self._call_normal(inputs)
 
-        xx, xy = np.meshgrid(np.array(range(inputs.shape[1])), np.array(range(inputs.shape[2])))
-        xx = np.expand_dims(xx.flatten(), 1)
-        xy = np.expand_dims(xy.flatten(), 1)
-        xc = np.concatenate([xx, xy], axis=1)
+        xx, xy = tf.meshgrid(K.arange(inputs.shape[1]), K.arange(inputs.shape[2]))
+        xx = K.expand_dims(K.flatten(xx), 1)
+        xy = K.expand_dims(K.flatten(xy), 1)
+        xc = K.concatenate([xx, xy], axis=1)
 
         if mask is not None:
             xc = xc[mask, :]
 
-        n_samples = min(self.n_samples, len(xc))
+        n_samples = min(self.n_samples, xc.shape[0])
 
         xx = xc[:n_samples, 0]
         yy = xc[:n_samples, 1]
@@ -157,17 +153,19 @@ class VGG16_pt(Layer):
 
         ls = []
         for i, out in enumerate(outputs):
+            b, w, h, c = out.shape
             x = out
 
             if i > 0 and out.shape[1] < outputs[i-1].shape[1]:
-                xx = xx / 2.
-                yy = yy / 2.
+                xx = K.cast(xx, 'float32') / 2.
+                yy = K.cast(yy, 'float32') / 2.
 
-            xx = np.clip(xx, 0, out.shape[1]-1).astype('int32')
-            yy = np.clip(yy, 0, out.shape[2]-1).astype('int32')
+            xx = K.cast(K.clip(xx, 0, out.shape[1]-1), 'int32')
+            yy = K.cast(K.clip(yy, 0, out.shape[2]-1), 'int32')
 
-            xs = [x[:, xx[i], yy[i]][:, tf.newaxis, tf.newaxis] for i in range(n_samples)]
-            x = K.concatenate(xs, axis=1)
+            idx = xx * h + yy
+            x = tf.gather(K.reshape(x, (-1, w * h, c)), idx, axis=1)
+            x = K.expand_dims(x, axis=2)
 
             ls.append(x)    # NOTICE: the original code do clone() and detach()
         
@@ -181,7 +179,7 @@ class VGG16_pt(Layer):
         if self.inference_type == 'cat':
             ch = sum([model.output_shape[-1] for model in self.models])
             n = min(input_shape[1] * input_shape[2], self.n_samples)
-            return (b, n, 1, ch)
+            return b, n, 1, ch
 
 
 class StyleTransfer(Model):
@@ -200,24 +198,12 @@ class StyleTransfer(Model):
 
         self.objective = objective_function
 
-        # if not os.path.isfile('tmp_z_s.pkl'):
-        #     self.z_s = preprocess_style_image(style_img, n_samples=n_samples, scale=scale, inner=1)
-        #     with open('tmp_z_s.pkl', 'wb') as f:
-        #         pickle.dump(self.z_s, f)
-        # if not os.path.isfile('tmp_z_c.pkl'):
-        #     self.z_c = preprocess_content_image(content_img, n_samples=n_samples)
-        #     with open('tmp_z_c.pkl', 'wb') as f:
-        #             pickle.dump(self.z_c, f)
-        #
-        # with open('tmp_z_s.pkl', 'rb') as f:
-        #     self.z_s = pickle.load(f)
-        # with open('tmp_z_c.pkl', 'rb') as f:
-        #     self.z_c = pickle.load(f)
-
-        print('Preprocessing...')
+        print('Preprocessing...', flush=True)
         self.z_s = preprocess_style_image(style_img, n_samples=n_samples, scale=scale, inner=1)
+        print('Preprocess [style] Finished', flush=True)
         self.z_c = preprocess_content_image(content_img, n_samples=n_samples)
-        print('Preprocess Finished: {}'.format(base_img.shape))
+        print('Preprocess [content] Finished', flush=True)
+        print('Preprocess Finished: {}'.format(base_img.shape), flush=True)
 
         self.train_function = None
         self.test_function = None
@@ -288,7 +274,6 @@ class StyleTransfer(Model):
 
 if __name__ == '__main__':
 
-    # tf.compat.v1.disable_eager_execution()
     gpus = tf.config.experimental.list_physical_devices('GPU')
     if gpus:
         try:
@@ -302,50 +287,9 @@ if __name__ == '__main__':
     print(c_img.shape)
     print(s_img.shape)
 
-    # # test vgg_pt
-    # x = Input(shape=img.shape[1:])
-    # vgg = VGG16_pt(input_shape=img.shape[1:], inference_type='cat')
-
-    # model = Model(x, vgg(x), name='extractor')
-    # model.summary()
-
-    # pred = model.predict(img)
-    # if isinstance(pred, list):
-    #     for p in pred:
-    #         print(p.shape)
-    # else:
-    #     print(pred.shape)
-
-    # # test lap_pyr
-    # lap = LaplacianPyramid(levels=5)
-    # l_model = Model(x, lap(x), name='lap_pyr')
-    # l_model.summary()
-
-    # hc = l_model.predict(img)
-    # for h in hc:
-    #     print(h.shape, h.min(), h.max())
-    #     plt.imshow(np.clip(h[0] + .5, 0., 1.))
-    #     plt.show()
-
-    # # test inv_l_p
-    # xs = []
-    # for shape in l_model.output_shape:
-    #     xs.append(Input(shape=shape[1:]))
-    # inv = InverseLaplacianPyramid()
-    # i_model = Model(xs, inv(xs), name='inv_l_p')
-    # i_model.summary()
-
-    # res = i_model.predict(hc)
-    # print(res.shape, res.min(), res.max())
-    # plt.imshow(np.clip(res[0] + .5, 0., 1.))
-    # plt.show()
-
     # test style transfer
     st_shape = c_img.shape[1:]
-    # x_s = Input(shape=st_shape)
-    # x_c = Input(shape=st_shape)
     st = StyleTransfer(c_img, s_img, c_img, 512)
-    # st_model = Model([x_s, x_c], st([x_s, x_c]), name='style_transfer')
 
     st.compile(optimizer='rmsprop')
 
@@ -368,7 +312,3 @@ if __name__ == '__main__':
 
     plt.imshow(np.clip(new_img[0] + 0.5, 0., 1.))
     plt.show()
-    # loss, grad = st.predict(img)
-    # loss, grad = st(K.variable(img))
-    # print(loss)
-    # print(grad)
