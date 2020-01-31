@@ -7,23 +7,6 @@ import keras.backend as K
 import tensorflow as tf
 
 
-# def extract_style_from_image(img, n_samples, scale, inner):
-        
-#     from model import VGG16_pt
-    
-#     z_img = load_image(img, max_side=scale, force_scale=True)
-#     x = Input(shape=z_img.shape[1:])
-#     vgg = VGG16_pt(z_img.shape[1:], inference_type='cat', n_samples=n_samples)
-#     extractor = Model(x, vgg(x), name='extractor_vgg_pt')
-    
-#     zs = []
-#     for i in range(inner):
-#         zs.append(extractor.predict(z_img))
-#     z = np.concatenate(zs, axis=2)
-    
-#     return z, z_img
-
-
 class Singleton(type):
     _instance = None
 
